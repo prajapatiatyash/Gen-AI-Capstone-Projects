@@ -122,7 +122,7 @@ def approve_manager_ticket(indent_id: str, manager_id: str, comments: str | None
         cur = conn.cursor()
         cur.execute("""
             UPDATE travel_indents
-            SET is_approval='approved', updated_at=NOW()
+            SET manager_approval_status='APPROVED', status='PENDING_HR_APPROVAL', updated_at=NOW()
             WHERE indent_id=%s
         """, (indent_id,))
         cur.execute("""
@@ -198,94 +198,205 @@ def book_hotel(indent_id: str):
     booking = {"booking_id": f"HT{indent_id[-6:]}", "hotel": "Tech Park Inn", "status":"CONFIRMED"}
     return booking
 
-# ---------------------------------------------------------
-# MANAGER QUERIES
-# ---------------------------------------------------------
-
-def fetch_manager_indents(manager_id):
-    """Fetch all travel indents for employees reporting to this manager"""
+def create_travel_indent_from_form(
+    employee_id: str,
+    purpose_of_booking: str,
+    travel_type: str,
+    travel_start_date,   # date
+    travel_end_date,     # date
+    from_city: str,
+    from_country: str,
+    to_city: str,
+    to_country: str,
+):
+    """
+    Create a travel indent row using the logged-in employee details
+    and the form data. Returns the generated indent_id.
+    """
     with get_db_conn() as conn:
         cur = conn.cursor()
-        cur.execute("""
-            SELECT ti.*, 
-                   u.name AS employee_name,
-                   u.email,
-                   u.grade,
-                   u.department,
-                   u.designation
-            FROM travel_indents ti
-            JOIN users u ON ti.employee_id = u.employee_id
-            ORDER BY ti.created_at DESC
-        """, (manager_id,))
-        rows = cur.fetchall()
-        cols = [c[0] for c in cur.description]
-        return [dict(zip(cols, r)) for r in rows]
 
-
-def fetch_manager_pending(manager_id):
-    """Fetch only pending approval tickets"""
-    with get_db_conn() as conn:
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT ti.*, 
-                   u.name AS employee_name,
-                   u.email,
-                   u.grade,
-                   u.department,
-                   u.designation
-            FROM travel_indents ti
-            JOIN users u ON ti.employee_id = u.employee_id
-            WHERE ti.is_approved = 'pending'
-            ORDER BY ti.created_at DESC
-        """, (manager_id,))
-        rows = cur.fetchall()
-        cols = [c[0] for c in cur.description]
-        return [dict(zip(cols, r)) for r in rows]
-
-
-def fetch_manager_approved(manager_id):
-    """Fetch approved tickets"""
-    with get_db_conn() as conn:
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT ti.*, 
-                   u.name AS employee_name,
-                   u.email,
-                   u.grade,
-                   u.department,
-                   u.designation
-            FROM travel_indents ti
-            JOIN users u ON ti.employee_id = u.employee_id
-            WHERE ti.is_approved = 'approved'
-            ORDER BY ti.created_at DESC
-        """, (manager_id,))
-        rows = cur.fetchall()
-        cols = [c[0] for c in cur.description]
-        return [dict(zip(cols, r)) for r in rows]
-
-
-def approve_indent_manager(indent_id):
-    """Mark indent as manager approved"""
-    with get_db_conn() as conn:
-        cur = conn.cursor()
-        cur.execute("""
-            UPDATE travel_indents 
-            SET is_approved = 'approved',
-                updated_at = CURRENT_TIMESTAMP
-            WHERE indent_id = %s
-        """, (indent_id,))
-        conn.commit()
-        return True
-
-def fetch_employee_profile(employee_id):
-    with get_db_conn() as conn:
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT employee_id, name, email, grade, department,
-                   designation, manager_id, created_at, city, gender
+        # fetch user details from users table
+        cur.execute(
+            """
+            SELECT name, email, grade, department, designation
             FROM users
             WHERE employee_id = %s
-        """, (employee_id,))
+            """,
+            (employee_id,),
+        )
         row = cur.fetchone()
-        cols = [c[0] for c in cur.description]
-        return dict(zip(cols, row))
+        if not row:
+            cur.close()
+            raise ValueError(f"No user found with employee_id={employee_id}")
+
+        employee_name, email, grade, department, designation = row
+
+        # generate a business indent id – e.g. IND-20251116-<random 6 chars>
+        indent_id = f"IND-{datetime.datetime.utcnow().strftime('%Y%m%d%H%M%S')}-{str(uuid.uuid4())[:6].upper()}"
+
+
+        cur.execute(
+            """
+            INSERT INTO travel_indents (
+                indent_id,
+                employee_id,
+                employee_name,
+                email,
+                grade,
+                department,
+                designation,
+                purpose_of_booking,
+                travel_type,
+                travel_start_date,
+                travel_end_date,
+                from_city,
+                from_country,
+                to_city,
+                to_country
+            )
+            VALUES (
+                %s, %s, %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s, %s, %s, %s
+            )
+            RETURNING indent_id;
+            """,
+            (
+                indent_id,
+                employee_id,
+                employee_name,
+                email,
+                grade,
+                department,
+                designation,
+                purpose_of_booking,
+                travel_type,
+                travel_start_date,
+                travel_end_date,
+                from_city,
+                from_country,
+                to_city,
+                to_country,
+            ),
+        )
+
+        new_indent_id = cur.fetchone()[0]
+        conn.commit()
+        cur.close()
+        return new_indent_id
+def get_employee_travel_indents(employee_id: str):
+    """
+    Return all travel indents for the given employee, using the is_approved field
+    from travel_indents (text: 'pending' / 'approved' / 'rejected' etc.).
+    """
+    with get_db_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT
+                indent_id,
+                travel_start_date,
+                travel_end_date,
+                from_city,
+                from_country,
+                to_city,
+                to_country,
+                travel_type,
+                is_approved,
+                created_at
+            FROM travel_indents
+            WHERE employee_id = %s
+            ORDER BY created_at DESC
+            """,
+            (employee_id,),
+        )
+        rows = cur.fetchall()
+        cur.close()
+
+    tickets = []
+    for row in rows:
+        (
+            indent_id,
+            travel_start_date,
+            travel_end_date,
+            from_city,
+            from_country,
+            to_city,
+            to_country,
+            travel_type,
+            is_approved,
+            created_at,
+        ) = row
+
+        status_raw = (is_approved or "pending").strip().lower()
+        if status_raw == "approved":
+            status_clean = "Approved"
+        elif status_raw in ("rejected", "declined"):
+            status_clean = "Rejected"
+        else:
+            status_clean = "Pending"
+
+        tickets.append(
+            {
+                "indent_id": indent_id,
+                "travel_start_date": travel_start_date,
+                "travel_end_date": travel_end_date,
+                "from_city": from_city,
+                "from_country": from_country,
+                "to_city": to_city,
+                "to_country": to_country,
+                "travel_type": travel_type,
+                "status": status_clean,
+                "created_at": created_at,
+            }
+        )
+
+    return tickets
+from src.db.connection import get_db_conn  # this should already be there
+
+
+def get_employee_details(employee_id: str):
+    """
+    Fetch full employee profile from users table by employee_id.
+    """
+    conn = get_db_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    employee_id,
+                    name,
+                    email,
+                    grade,
+                    department,
+                    designation
+                FROM users
+                WHERE employee_id = %s
+                """,
+                (employee_id,),
+            )
+            row = cur.fetchone()
+    finally:
+        conn.close()
+
+    if not row:
+        return None
+
+    (
+        employee_id,
+        name,
+        email,
+        grade,
+        department,
+        designation,
+    ) = row
+
+    return {
+        "employee_id": employee_id,
+        "name": name,
+        "email": email,
+        "grade": grade,
+        "department": department,
+        "designation": designation,
+    }
