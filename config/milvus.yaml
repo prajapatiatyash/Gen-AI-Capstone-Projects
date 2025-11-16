@@ -1,0 +1,5 @@
+milvus:
+  uri: "https://in03-875f9da96ae2d5f.serverless.aws-eu-central-1.cloud.zilliz.com"
+  token: "09117c18be9422a5f2c873c185b858bcc5a2c1566eb60ff11ff39e6bea8f8464321fa7fbb5cb03ae367899a14dc6524a97f3f1f9"
+  collection_name: "travel_policy_embeddings"
+  dim: 1536

@@ -1,0 +1,9 @@
+database:
+  host: ep-curly-queen-adfn6lk9-pooler.c-2.us-east-1.aws.neon.tech
+  dbname: neondb
+  user: neondb_owner
+  password: npg_ObRWvDq9Yt7p
+  port: 5432
+  sslmode: require
+  minconn: 1
+  maxconn: 10

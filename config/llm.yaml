@@ -1,0 +1,6 @@
+llm:
+  provider: "lite"    # 'lite' recommended. If not present the wrapper will error instructively.
+  default_model: "gpt-like-embedding-model"
+  chat_model: "gpt-like-chat-model"
+  temperature: 0.2
+  max_tokens: 512
