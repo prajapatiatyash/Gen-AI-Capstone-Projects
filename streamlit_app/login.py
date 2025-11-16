@@ -1,25 +1,26 @@
 import streamlit as st
 import requests
 
-FASTAPI_URL = "http://127.0.0.1:8000"
+def login_ui():
+    st.title("🔐 Employee Login")
 
-def show_login():
-    st.title("🔐 Login")
-
-    email = st.text_input("Email")
+    emp_id = st.text_input("Employee ID")
     password = st.text_input("Password", type="password")
 
     if st.button("Login"):
-        resp = requests.post(
-            f"{FASTAPI_URL}/auth/token",
-            data={"username": email, "password": password}
+        response = requests.post(
+            "http://localhost:8000/auth/token",
+            data={"username": emp_id, "password": password}
         )
 
-        if resp.status_code == 200:
-            data = resp.json()
-            st.session_state["token"] = data["access_token"]
-            st.session_state["employee_id"] = data["employee_id"]
-            st.session_state["role"] = data["role"]
-            st.rerun()
+        if response.status_code == 200:
+            data = response.json()
+            return {
+                "token": data["access_token"],
+                "role": data["role"],
+                "employee_id": data["employee_id"]
+            }
         else:
             st.error("Invalid credentials")
+
+    return None

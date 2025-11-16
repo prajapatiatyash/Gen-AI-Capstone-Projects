@@ -1,45 +1,135 @@
 import streamlit as st
 import requests
-API_BASE = st.sidebar.text_input("API Base", "http://localhost:8000")
-st.title("Manager Approvals (Demo)")
+import uuid
 
-manager_id = st.text_input("Manager ID (e.g., EMP002)")
+# =================================================================
+# MANAGER DASHBOARD UI
+# =================================================================
 
-if st.button("List pending"):
-    resp = requests.get(f"{API_BASE}/manager/pending/{manager_id}")
-    st.write(resp.json())
 
-indent = st.text_input("Indent ID to approve")
-comments = st.text_input("Comments")
+def manager_ui(token):
+    if "current_tab" not in st.session_state:
+        st.session_state.current_tab = "all"
 
-if st.button("Approve"):
-    payload = {"manager_id": manager_id, "indent_id": indent, "comments": comments}
-    resp = requests.post(f"{API_BASE}/manager/approve", json=payload)
-    st.write(resp.json())
+    st.title("👨‍💼 Manager Dashboard")
+    headers = {"Authorization": f"Bearer {token}"}
 
-# streamlit_app/manager_ui.py
+    tab1, tab2, tab3 = st.tabs(["📋 All Tickets", "🕒 Pending", "✅ Approved"])
 
-import streamlit as st
-from utils import call_api
+    with tab1:
+        st.session_state.current_tab = "all"
+        st.subheader("📋 All Tickets Submitted")
+        res = requests.get("http://localhost:8000/manager/indents", headers=headers)
+        if res.status_code == 200:
+            tickets = sorted(res.json(), key=lambda x: x["created_at"], reverse=True)
+            for item in tickets:
+                show_ticket(item, show_approve=True, token=token)
+        else:
+            st.error("Failed to load tickets.")
+            st.code(res.text)
 
-def manager_ui():
-    st.title("Manager Dashboard")
+    with tab2:
+        st.session_state.current_tab = "pending"
+        st.subheader("🕒 Tickets Pending Approval")
+        res = requests.get("http://localhost:8000/manager/pending", headers=headers)
+        if res.status_code == 200:
+            pending = sorted(res.json(), key=lambda x: x["created_at"], reverse=True)
+            for item in pending:
+                show_ticket(item, show_approve=True, token=token)
+        else:
+            st.error("Failed to load pending tickets.")
 
-    token = st.session_state.get("token")
-    if not token:
-        st.error("You must log in first.")
+    with tab3:
+        st.session_state.current_tab = "approved"
+        st.subheader("✅ Approved Tickets")
+        res = requests.get("http://localhost:8000/manager/approved", headers=headers)
+        if res.status_code == 200:
+            approved = sorted(res.json(), key=lambda x: x["created_at"], reverse=True)
+            for item in approved:
+                show_ticket(item, token=token)
+        else:
+            st.error("Failed to load approved tickets.")
+
+
+
+
+# =================================================================
+# SHOW TICKET (unique-button-safe)
+# =================================================================
+def show_ticket(item, show_approve=False, token=None):
+    current_tab = st.session_state.get("current_tab", "all")
+    profile_key = f"profile_toggle_{current_tab}_{item['indent_id']}"
+
+    with st.expander(f"🧾 {item['indent_id']} — {item['employee_name']}", expanded=False):
+        st.markdown("### 👤 Employee Summary")
+        st.write(f"**Name:** {item['employee_name']}")
+        st.write(f"**Employee ID:** {item['employee_id']}")
+
+        if profile_key not in st.session_state:
+            st.session_state[profile_key] = False
+
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            if st.button("View Full Profile", key=f"btn_{profile_key}"):
+                st.session_state[profile_key] = True
+        with col2:
+            if st.session_state[profile_key] and st.button("Close Profile", key=f"close_{profile_key}"):
+                st.session_state[profile_key] = False
+
+        if st.session_state[profile_key]:
+            show_inline_profile(item["employee_id"], token)
+
+        st.markdown("### ✈ Travel Details")
+        st.write(f"**From:** {item['from_city']}")
+        st.write(f"**To:** {item['to_city']}")
+        st.write(f"**Start Date:** {item['travel_start_date']}")
+        st.write(f"**End Date:** {item['travel_end_date']}")
+        st.write(f"**Purpose:** {item['purpose_of_booking']}")
+
+        st.markdown("### ✔ Approval Status")
+        status = item["is_approved"]
+        st.write("🟡 **Pending Approval**" if status == "pending" else "🟢 **Approved**" if status == "accepted" else f"Status: {status}")
+
+        if show_approve and status == "pending":
+            approve_key = f"approve_{current_tab}_{item['indent_id']}"
+            if st.button("Approve Ticket ✔", key=approve_key):
+                print(f"Approving ticket: {item['indent_id']}")
+                res = requests.post(
+                    f"http://localhost:8000/manager/approve/{item['indent_id']}",
+                    headers={"Authorization": f"Bearer {token}"}
+                )
+                print(f"Approval response: {res.status_code}, {res.text}")
+                if res.status_code == 200:
+                    st.success("Ticket Approved!")
+                    st.rerun()
+                else:
+                    st.error("Approval failed.")
+
+
+
+
+
+# =================================================================
+# EMPLOYEE FULL PROFILE (only appears when clicked)
+# =================================================================
+
+
+def show_inline_profile(emp_id, token):
+    headers = {"Authorization": f"Bearer {token}"}
+    res = requests.get(f"http://localhost:8000/manager/employee-profile/{emp_id}", headers=headers)
+
+    if res.status_code != 200:
+        st.error("Failed to load profile.")
         return
 
-    st.subheader("Approve Pending Tickets")
-
-    # Example input
-    emp = st.text_input("Employee ID")
-    if st.button("Get Employee Details"):
-        resp = call_api("/manager/details", token, {"employee_id": emp})
-        st.write(resp)
-
-    ticket = st.text_input("Ticket ID")
-    if st.button("Approve Ticket"):
-        resp = call_api("/manager/approve", token, {"ticket_id": ticket})
-        st.write(resp)
-
+    profile = res.json()
+    st.markdown(f"""
+**Email:** {profile['email']}  
+**Gender:** {profile.get('gender', 'N/A')}  
+**Grade:** {profile['grade']}  
+**Department:** {profile['department']}  
+**Designation:** {profile['designation']}  
+**Manager:** {profile['manager_id']}  
+**Joining Date:** {profile['created_at']}  
+**Home City:** {profile.get('city', 'N/A')}  
+""")

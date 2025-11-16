@@ -1,25 +1,34 @@
 import streamlit as st
-from login import show_login
+from login import login_ui
+from manager_ui import manager_ui
+from hr_ui import hr_ui
+from employee_ui import employee_ui
 
-st.set_page_config(page_title="Travel Indent System", layout="wide")
+st.set_page_config(page_title="Travel Portal", layout="wide")
 
-if "token" not in st.session_state:
-    show_login()
-else:
-    role = st.session_state.get("role")
-    print(f"User role: {st.session_state}")
+# Create session var
+if "auth" not in st.session_state:
+    st.session_state.auth = None
 
-    if role == "employee":
-        from employee_ui import employee_ui
-        employee_ui()
+# ----------------------------
+# SHOW LOGIN IF NOT LOGGED IN
+# ----------------------------
+if st.session_state.auth is None:
+    auth = login_ui()
+    if auth:
+        st.session_state.auth = auth
+        st.rerun()
+    st.stop()
 
-    elif role == "manager":
-        from manager_ui import manager_ui
-        manager_ui()
+# ----------------------------
+# ROUTE TO CORRECT DASHBOARD
+# ----------------------------
+role = st.session_state.auth["role"]
+token = st.session_state.auth["token"]
 
-    elif role == "hr":
-        from hr_ui import hr_ui
-        hr_ui()
-
-    else:
-        st.error("Unknown role")
+if role == "manager":
+    manager_ui(token)
+elif role == "employee":
+    employee_ui(token)
+elif role == "hr":
+    hr_ui(token)

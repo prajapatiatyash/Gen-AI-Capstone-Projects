@@ -1,18 +1,66 @@
-# src/api/manager_router.py
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends
 from src.auth.jwt_service import get_current_user
-from src.agents.manager_agent import ManagerAgent
+from src.db.travel_queries import (
+    fetch_manager_indents,
+    fetch_manager_pending,
+    fetch_manager_approved,
+    approve_indent_manager
+)
 
-router = APIRouter()
-SESSION_STORE = {}  # share same store if you prefer; for demo it's separate
+router = APIRouter(prefix="/manager", tags=["Manager"])
 
-class ChatReq(BaseModel):
-    message: str
 
+from fastapi import APIRouter, Depends
+from src.auth.jwt_service import get_current_user
+from src.db.travel_queries import fetch_manager_indents, fetch_employee_profile
+from src.llm.client import chat
+
+router = APIRouter(prefix="/manager", tags=["Manager"])
+
+
+# -----------------------------
+# 1️⃣ Manager sees all indents
+# -----------------------------
+@router.get("/indents")
+def get_team_indents(user=Depends(get_current_user)):
+    return fetch_manager_indents(user["employee_id"])
+
+
+# -----------------------------
+# 2️⃣ Manager chatbot
+# -----------------------------
 @router.post("/chat")
-def chat(req: ChatReq, current_user=Depends(get_current_user)):
-    if current_user["role"] != "manager":
-        raise HTTPException(status_code=403, detail="Not a manager")
-    agent = ManagerAgent(current_user, SESSION_STORE)
-    return agent.handle_message(req.message)
+def manager_chat(prompt: str, user=Depends(get_current_user)):
+    reply = chat(prompt)
+    return {"reply": reply}
+
+
+# -----------------------------
+# 3️⃣ FULL EMPLOYEE PROFILE API
+# -----------------------------
+@router.get("/employee-profile/{employee_id}")
+def get_employee_profile(employee_id: str, user=Depends(get_current_user)):
+    profile = fetch_employee_profile(employee_id)
+    return profile
+
+
+
+@router.get("/indents")
+def get_all_indents(user=Depends(get_current_user)):
+    return fetch_manager_indents(user["employee_id"])
+
+
+@router.get("/pending")
+def get_pending(user=Depends(get_current_user)):
+    return fetch_manager_pending(user["employee_id"])
+
+
+@router.get("/approved")
+def get_approved(user=Depends(get_current_user)):
+    return fetch_manager_approved(user["employee_id"])
+
+
+@router.post("/approve/{indent_id}")
+def approve(indent_id: str, user=Depends(get_current_user)):
+    approve_indent_manager(indent_id)
+    return {"status": "approved", "indent_id": indent_id}
