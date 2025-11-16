@@ -117,30 +117,114 @@ def get_indent_details(indent_id: str):
         return None
     return dict(zip(["indent_id","employee_id","purpose","source_city","destination_city","start_date","end_date","total_days","total_estimated_cost","status"], row))
 
-def approve_manager_ticket(indent_id: str, manager_id: str, comments: str | None = None):
+def fetch_manager_indents(manager_id):
+    """Fetch all travel indents for employees reporting to this manager"""
+    with get_db_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT ti.*, 
+                   u.name AS employee_name,
+                   u.email,
+                   u.grade,
+                   u.department,
+                   u.designation
+            FROM travel_indents ti
+            JOIN users u ON ti.employee_id = u.employee_id
+            ORDER BY ti.created_at DESC
+        """, (manager_id,))
+        rows = cur.fetchall()
+        cols = [c[0] for c in cur.description]
+        return [dict(zip(cols, r)) for r in rows]
+    
+def fetch_manager_pending(manager_id):
+    """Fetch only pending approval tickets"""
+    with get_db_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT ti.*, 
+                   u.name AS employee_name,
+                   u.email,
+                   u.grade,
+                   u.department,
+                   u.designation
+            FROM travel_indents ti
+            JOIN users u ON ti.employee_id = u.employee_id
+            WHERE ti.is_approved = 'pending'
+            ORDER BY ti.created_at DESC
+        """, (manager_id,))
+        rows = cur.fetchall()
+        cols = [c[0] for c in cur.description]
+        return [dict(zip(cols, r)) for r in rows]
+
+def fetch_manager_approved(manager_id):
+    """Fetch approved tickets"""
+    with get_db_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT ti.*, 
+                   u.name AS employee_name,
+                   u.email,
+                   u.grade,
+                   u.department,
+                   u.designation
+            FROM travel_indents ti
+            JOIN users u ON ti.employee_id = u.employee_id
+            WHERE ti.is_approved = 'accepted_manager'
+            ORDER BY ti.created_at DESC
+        """, (manager_id,))
+        rows = cur.fetchall()
+        cols = [c[0] for c in cur.description]
+        return [dict(zip(cols, r)) for r in rows]
+    
+def approve_indent_manager(indent_id):
+    """Mark indent as manager approved"""
+    with get_db_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE travel_indents 
+            SET is_approved = 'accepted_manager',
+                updated_at = CURRENT_TIMESTAMP
+            WHERE indent_id = %s
+        """, (indent_id,))
+        conn.commit()
+        return True
+
+def fetch_employee_profile(employee_id):
+    with get_db_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT employee_id, name, email, grade, department,
+                   designation, manager_id, created_at, city, gender
+            FROM users
+            WHERE employee_id = %s
+        """, (employee_id,))
+        row = cur.fetchone()
+        cols = [c[0] for c in cur.description]
+        return dict(zip(cols, row))
+
+def approve_manager_ticket(indent_id):
     with get_db_conn() as conn:
         cur = conn.cursor()
         cur.execute("""
             UPDATE travel_indents
-            SET manager_approval_status='APPROVED', status='PENDING_HR_APPROVAL', updated_at=NOW()
+            SET manager_approval_status='accepted_manager', updated_at=NOW()
             WHERE indent_id=%s
         """, (indent_id,))
-        cur.execute("""
-            UPDATE approval_workflow
-            SET status='APPROVED', comments=%s, approved_at=NOW()
-            WHERE indent_id=%s AND approver_id=%s AND approval_type='MANAGER'
-        """, (comments, indent_id, manager_id))
-        # insert HR step
-        cur.execute("SELECT employee_id FROM users WHERE role='hr' AND is_active=TRUE LIMIT 1")
-        hr_row = cur.fetchone()
-        if hr_row:
-            hr_id = hr_row[0]
-            cur.execute("""
-                INSERT INTO approval_workflow (indent_id, approver_id, approval_type, status, created_at)
-                VALUES (%s,%s,%s,%s,NOW())
-            """, (indent_id, hr_id, "HR", "PENDING"))
         conn.commit()
         cur.close()
+
+def reject_manager_ticket(indent_id):
+    """Mark indent as manager Rejected"""
+    with get_db_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE travel_indents 
+            SET is_approved = 'rejected_manager',
+                updated_at = CURRENT_TIMESTAMP
+            WHERE indent_id = %s
+        """, (indent_id,))
+        conn.commit()
+        return True
 
 def get_pending_hr_tickets():
     with get_db_conn() as conn:

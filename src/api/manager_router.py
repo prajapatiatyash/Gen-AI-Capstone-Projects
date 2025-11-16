@@ -4,7 +4,8 @@ from src.db.travel_queries import (
     fetch_manager_indents,
     fetch_manager_pending,
     fetch_manager_approved,
-    approve_indent_manager
+    approve_indent_manager,
+    reject_manager_ticket
 )
 
 router = APIRouter(prefix="/manager", tags=["Manager"])
@@ -17,13 +18,6 @@ from src.llm.client import chat
 
 router = APIRouter(prefix="/manager", tags=["Manager"])
 
-
-# -----------------------------
-# 1️⃣ Manager sees all indents
-# -----------------------------
-@router.get("/indents")
-def get_team_indents(user=Depends(get_current_user)):
-    return fetch_manager_indents(user["employee_id"])
 
 
 # -----------------------------
@@ -64,3 +58,8 @@ def get_approved(user=Depends(get_current_user)):
 def approve(indent_id: str, user=Depends(get_current_user)):
     approve_indent_manager(indent_id)
     return {"status": "approved", "indent_id": indent_id}
+
+@router.post("/reject/{indent_id}")
+def reject(indent_id: str, user=Depends(get_current_user)):
+    reject_manager_ticket(indent_id)
+    return {"status": "rejected", "indent_id": indent_id}

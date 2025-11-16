@@ -23,7 +23,7 @@ def manager_ui(token):
         if res.status_code == 200:
             tickets = sorted(res.json(), key=lambda x: x["created_at"], reverse=True)
             for item in tickets:
-                show_ticket(item, show_approve=True, token=token)
+                show_ticket(item, show_approve=True, show_reject=True, token=token)
         else:
             st.error("Failed to load tickets.")
             st.code(res.text)
@@ -35,7 +35,7 @@ def manager_ui(token):
         if res.status_code == 200:
             pending = sorted(res.json(), key=lambda x: x["created_at"], reverse=True)
             for item in pending:
-                show_ticket(item, show_approve=True, token=token)
+                show_ticket(item, show_approve=True, show_reject=True, token=token)
         else:
             st.error("Failed to load pending tickets.")
 
@@ -56,7 +56,7 @@ def manager_ui(token):
 # =================================================================
 # SHOW TICKET (unique-button-safe)
 # =================================================================
-def show_ticket(item, show_approve=False, token=None):
+def show_ticket(item, show_approve=False, show_reject=False, token=None):
     current_tab = st.session_state.get("current_tab", "all")
     profile_key = f"profile_toggle_{current_tab}_{item['indent_id']}"
 
@@ -105,6 +105,20 @@ def show_ticket(item, show_approve=False, token=None):
                 else:
                     st.error("Approval failed.")
 
+            if show_reject and status == "pending":
+                reject_key = f"reject_{current_tab}_{item['indent_id']}"
+                if st.button("Reject Ticket", key=reject_key):
+                    print(f"Rejecting ticket: {item['indent_id']}")
+                    res = requests.post(
+                        f"http://localhost:8000/manager/reject/{item['indent_id']}",
+                        headers={"Authorization": f"Bearer {token}"}
+                    )
+                    print(f"Rejection response: {res.status_code}, {res.text}")
+                    if res.status_code == 200:
+                        st.success("Ticket Rejected!")
+                        st.rerun()
+                    else:
+                        st.error("Rejection failed.")
 
 
 

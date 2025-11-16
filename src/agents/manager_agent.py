@@ -1,5 +1,5 @@
 # src/agents/manager_agent.py
-from src.db.travel_queries import get_pending_manager_tickets, get_indent_details, approve_manager_ticket, get_user_details
+from src.db.travel_queries import get_pending_manager_tickets, get_indent_details, approve_manager_ticket, reject_manager_ticket
 
 class ManagerAgent:
     def __init__(self, user, sessions):
@@ -25,4 +25,11 @@ class ManagerAgent:
                 approve_manager_ticket(indent_id, self.user["employee_id"])
                 return {"message":"Approved", "indent_id": indent_id}
             return {"error":"usage: approve <INDENT_ID>"}
-        return {"help":"Commands: 'list pending', 'details <INDENT>', 'approve <INDENT>'"}
+        if text.startswith("reject"):
+            parts = message.split()
+            if len(parts) >= 2:
+                indent_id = parts[1].strip()
+                reject_manager_ticket(indent_id, self.user["employee_id"])
+                return {"message":"Rejected", "indent_id": indent_id}
+            return {"error":"usage: reject <INDENT_ID>"}
+        return {"help":"Commands: 'list pending', 'details <INDENT>', 'approve <INDENT>', 'reject <INDENT>'"}
