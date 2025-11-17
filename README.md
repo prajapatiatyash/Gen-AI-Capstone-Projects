@@ -15,9 +15,7 @@ uvicorn src.main:app --reload --port 8000
 
 
 5. Start Streamlit examples (in separate terminals):
-streamlit run streamlit_app/employee_ui.py
-streamlit run streamlit_app/manager_ui.py
-streamlit run streamlit_app/hr_ui.py
+streamlit run streamlit_app/main.py
 
 6. Test the flows:
 
