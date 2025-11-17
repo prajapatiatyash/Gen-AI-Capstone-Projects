@@ -337,11 +337,12 @@ def create_travel_indent_from_form(
                 from_city,
                 from_country,
                 to_city,
-                to_country
+                to_country,
+        is_approved
             )
             VALUES (
                 %s, %s, %s, %s, %s, %s, %s,
-                %s, %s, %s, %s, %s, %s, %s, %s
+                %s, %s, %s, %s, %s, %s, %s, %s, %s
             )
             RETURNING indent_id;
             """,
@@ -361,6 +362,7 @@ def create_travel_indent_from_form(
                 from_country,
                 to_city,
                 to_country,
+        "pending"  # Add this value
             ),
         )
 
@@ -368,6 +370,8 @@ def create_travel_indent_from_form(
         conn.commit()
         cur.close()
         return new_indent_id
+
+
 def get_employee_travel_indents(employee_id: str):
     """
     Return all travel indents for the given employee, using the is_approved field
